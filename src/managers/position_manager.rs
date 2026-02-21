@@ -1,0 +1,214 @@
+use std::f64::consts::PI;
+
+const ZONE_LETTERS: &'static str = "CDEFGHJKLMNPQRSTUVWXX";
+
+struct Ellipsoid {
+    a: f64,
+    f: f64,
+}
+#[derive(Debug, PartialEq)]
+pub enum WSG84ToLatLonError {
+    EastingOutOfRange,
+    NorthingOutOfRange,
+    ZoneNumOutOfRange,
+    ZoneLetterOutOfRange,
+}
+
+const WGS84: Ellipsoid = Ellipsoid {
+    a: 6378137.0,
+    f: 1.0 / 298.257222101,
+};
+
+const K0: f64 = 0.9996;
+const E: f64 = 0.00669438;
+
+pub fn get_zone_from_lon(lon: f64) -> u8 {
+    ((lon + 180.0) / 6.0).floor() as u8 + 1
+}
+
+pub fn to_utm_wgs84(latitude: f64, longitude: f64, zone: u8) -> (f64, f64, f64) {
+    let latitude = latitude * PI / 180.0;
+    let longitude = longitude * PI / 180.0;
+    radians_to_utm_wgs84(latitude, longitude, zone)
+}
+
+fn radians_to_utm_wgs84(latitude: f64, longitude: f64, zone: u8) -> (f64, f64, f64) {
+    let ellipsoid = WGS84;
+    let long_origin = zone as f64 * 6.0 - 183.0;
+    let e2 = 2.0 * ellipsoid.f - ellipsoid.f * ellipsoid.f;
+    let ep2 = e2 / (1.0 - e2);
+
+    let n = ellipsoid.a / (1.0 - e2 * latitude.sin() * latitude.sin()).sqrt();
+    let t = latitude.tan() * latitude.tan();
+    let c = ep2 * latitude.cos() * latitude.cos();
+    let a = latitude.cos() * (longitude - (long_origin * PI / 180.0));
+
+    let term1 = 1.0 - e2 / 4.0 - (3.0 * e2 * e2) / 64.0 - (5.0 * e2 * e2 * e2) / 256.0;
+    let term2 = (3.0 * e2) / 8.0 + (3.0 * e2 * e2) / 32.0 + (45.0 * e2 * e2 * e2) / 1024.0;
+    let term3 = (15.0 * e2 * e2) / 256.0 + (45.0 * e2 * e2 * e2) / 1024.0;
+    let term4 = (35.0 * e2 * e2 * e2) / 3072.0;
+
+    let m = ellipsoid.a
+        * (term1 * latitude - term2 * (2.0 * latitude).sin() + term3 * (4.0 * latitude).sin()
+            - term4 * (6.0 * latitude).sin());
+
+    let x1 = ((1.0 - t + c) * a * a * a) / 6.0;
+    let x2 = ((5.0 - 18.0 * t + t * t + 72.0 * c - 58.0 * ep2) * a * a * a * a * a) / 120.0;
+    let x = 0.9996 * n * (a + x1 + x2);
+
+    let y1 = (5.0 - t + 9.0 * c + 4.0 * c * c) * (a * a * a * a) / 24.0;
+    let y2 = (61.0 - 58.0 * t + t * t + 600.0 * c - 330.0 * ep2) * (a * a * a * a * a * a) / 720.0;
+    let y3 = (a * a) / 2.0 + y1 + y2;
+    let y = 0.9996 * (m + n * latitude.tan() * y3);
+
+    // Southern hemisphere coords add a factor
+    let northing_mod = if latitude > 0.0 { 0.0 } else { 10000000.0 };
+
+    let northing = y + northing_mod;
+    let easting = x + 500000.0;
+
+    let meridian_convergence = meridian_convergence(northing, easting, WGS84);
+    (northing, easting, meridian_convergence)
+}
+
+fn meridian_convergence(northing: f64, easting: f64, ellipsoid: Ellipsoid) -> f64 {
+    let e2: f64 = 2.0 * ellipsoid.f - ellipsoid.f * ellipsoid.f;
+    let e1 = (1.0 - (1.0 - e2).sqrt()) / (1.0 + (1.0 - e2).sqrt());
+    let mu_const =
+        ellipsoid.a * (1.0 - e2 / 4.0 - 3.0 * e2 * e2 / 64.0 - 5.0 * e2 * e2 * e2 / 256.0);
+
+    let np = northing / 0.9996;
+    let mu = np / mu_const;
+    let foot_lat = footprint_latitude(e1, mu);
+
+    let ep = (easting - 500000.0) / 0.9996;
+    let n = ellipsoid.a / (1.0 - e2 * foot_lat.sin() * foot_lat.sin()).sqrt();
+    let m = (ellipsoid.a * (1.0 - e2)) / (1.0 - e2 * foot_lat.sin() * foot_lat.sin()).powf(1.5);
+
+    let conv1 = -(ep / n) * foot_lat.tan();
+    let h30 = (ep / n).powi(3);
+    let k28 = n / m;
+    let k29 = k28 * k28;
+    let j29 = foot_lat.tan() * foot_lat.tan();
+    let conv2 = (foot_lat.tan() * h30 / 3.0) * (-2.0 * k29 + 3.0 * k28 + j29);
+    conv1 + conv2
+}
+
+fn footprint_latitude(e1: f64, mu: f64) -> f64 {
+    let term1 = 3.0 * e1 / 2.0 - 27.0 * e1 * e1 * e1 / 32.0;
+    let term2 = 21.0 * e1 * e1 / 16.0 - 55.0 * e1 * e1 * e1 * e1 / 32.0;
+    let term3 = 151.0 * e1 * e1 * e1 / 96.0;
+    let term4 = 1097.0 * e1 * e1 * e1 * e1 / 512.0;
+
+    mu + term1 * (2.0 * mu).sin()
+        + term2 * (4.0 * mu).sin()
+        + term3 * (6.0 * mu).sin()
+        + term4 * (8.0 * mu).sin()
+}
+
+pub fn lat_to_zone_letter(latitude: f64) -> Option<char> {
+    if -80. <= latitude && latitude <= 84. {
+        let (_, c) = ZONE_LETTERS
+            .char_indices()
+            .nth(((latitude + 80.) / 8.).floor() as usize)
+            .unwrap();
+        return Some(c);
+    }
+    return None;
+}
+
+pub fn wsg84_utm_to_lat_lon(
+    easting: f64,
+    northing: f64,
+    zone_num: u8,
+    zone_letter: char,
+) -> Result<(f64, f64), WSG84ToLatLonError> {
+    if easting < 100000. || 1000000. <= easting {
+        return Err(WSG84ToLatLonError::EastingOutOfRange);
+    }
+    if northing < 0. || northing > 10000000. {
+        return Err(WSG84ToLatLonError::NorthingOutOfRange);
+    }
+    if zone_num < 1 || zone_num > 60 {
+        return Err(WSG84ToLatLonError::ZoneNumOutOfRange);
+    }
+    if zone_letter < 'C' || zone_letter > 'X' {
+        return Err(WSG84ToLatLonError::ZoneLetterOutOfRange);
+    }
+
+    let ellipsoid = WGS84;
+
+    let e2 = E.powi(2);
+    let e3 = E.powi(3);
+    let e_p2: f64 = E / (1. - E);
+
+    let sqrt_e: f64 = (1. - E).sqrt();
+    let _e: f64 = (1. - sqrt_e) / (1. + sqrt_e);
+    let _e2: f64 = _e.powi(2);
+    let _e3: f64 = _e.powi(3);
+    let _e4: f64 = _e.powi(4);
+    let _e5: f64 = _e.powi(5);
+
+    let m1 = 1. - E / 4. - 3. * e2 / 64. - 5. * e3 / 256.;
+
+    let p2: f64 = 3. / 2. * _e - 27. / 32. * _e3 + 269. / 512. * _e5;
+    let p3: f64 = 21. / 16. * _e2 - 55. / 32. * _e4;
+    let p4: f64 = 151. / 96. * _e3 - 417. / 128. * _e5;
+    let p5: f64 = 1097. / 512. * _e4;
+
+    let x = easting - 500000_f64;
+    let mut y = northing;
+
+    let northern = zone_letter >= 'N';
+
+    if !northern {
+        y -= 1e7;
+    }
+
+    let m = y / K0;
+    let mu = m / (ellipsoid.a * m1);
+
+    let p_rad = mu
+        + p2 * (2. * mu).sin()
+        + p3 * (4. * mu).sin()
+        + p4 * (6. * mu).sin()
+        + p5 * (8. * mu).sin();
+
+    let p_sin = p_rad.sin();
+    let p_sin2 = p_sin.powi(2);
+
+    let p_cos = p_rad.cos();
+
+    let p_tan = p_rad.tan();
+    let p_tan2 = p_tan.powi(2);
+    let p_tan4 = p_tan.powi(4);
+
+    let ep_sin = 1. - E * p_sin2;
+    let ep_sin_sqrt = ep_sin.sqrt();
+
+    let n = ellipsoid.a / ep_sin_sqrt;
+    let r = (1. - E) / ep_sin;
+
+    let c = _e * p_cos * p_cos;
+    let c2 = c * c;
+
+    let d = x / (n * K0);
+    let d2 = d.powi(2);
+    let d3 = d.powi(3);
+    let d4 = d.powi(4);
+    let d5 = d.powi(5);
+    let d6 = d.powi(6);
+
+    let latitude = p_rad
+        - (p_tan / r) * (d2 / 2. - d4 / 24. * (5. + 3. * p_tan2 + 10. * c - 4. * c2 - 9. * e_p2))
+        + d6 / 720. * (61. + 90. * p_tan2 + 298. * c + 45. * p_tan4 - 252. * e_p2 - 3. * c2);
+
+    let longitude = (d - d3 / 6. * (1. + 2. * p_tan2 + c)
+        + d5 / 120. * (5. - 2. * c + 28. * p_tan2 - 3. * c2 + 8. * e_p2 + 24. * p_tan4))
+        / p_cos;
+
+    Ok((
+        latitude / PI * 180.,
+        longitude / PI * 180. + (f64::from(zone_num) - 1.) * 6. - 180. + 3.,
+    ))
+}
