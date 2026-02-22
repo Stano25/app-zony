@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use iced::{Element, Length, Task, Theme, Color, Background, Alignment, Font, font::Weight, Padding};
 use std::io;
 mod managers;
-use managers::data_manager::{FiveGRecord,GridSquare, GsmRecord, LteRecord,process_dataset, get_grid_map,create_protocol,process_point_dataset};
+use managers::data_manager::{FiveGRecord,GridSquare, GsmRecord, LteRecord,process_dataset, get_grid_map,create_protocol,process_point_dataset, process_multiple_points_dataset, MobilePathProvider};
 use managers::json_manager::{try_read_json,create_blank_json, save_json};
 
 const folder_name: &str = "App-zony-100m";
@@ -73,12 +73,14 @@ pub struct AppSettings {
     pub filter_5g_path: String,
     pub protokol_path: String,
     pub protocol_points_path: String,
+    pub protocol_mobile_path: String,
 
     pub is_dark_mode: bool,
     pub is_terminal_open: bool,
     pub generate_missing_operators: bool,
     pub use_lte_filter: bool,
     pub use_5g_filter: bool,
+    pub use_multiple_filters: bool,
     pub use_protocol_points: bool,
 }
 
@@ -92,9 +94,11 @@ impl AppSettings {
             filter_5g_path: "".to_string(),
             protokol_path: "".to_string(),
             protocol_points_path: "".to_string(),
+            protocol_mobile_path: "".to_string(),
             generate_missing_operators: true,
             use_lte_filter: true,
             use_5g_filter: true,
+            use_multiple_filters: true,
             use_protocol_points: false,
         }
     }
@@ -122,6 +126,33 @@ struct AppState {
     threshold_rsrp: String,
     threshold_sinr: String,
     selected_dropdown: SelectedDropDown,
+    mobile_paths: Vec<MobilePathEntry>,
+}
+
+#[derive(Debug, Clone)]
+struct MobilePathEntry {
+    lte_path: String,
+    g5_path: String,
+}
+
+impl MobilePathEntry {
+    pub fn lte_pathbuf(&self) -> PathBuf {
+        PathBuf::from(self.lte_path.clone())
+    }
+
+    pub fn g5_pathbuf(&self) -> PathBuf {
+        PathBuf::from(self.g5_path.clone())
+    }
+}
+
+impl MobilePathProvider for MobilePathEntry {
+    fn lte_pathbuf(&self) -> PathBuf {
+        self.lte_pathbuf()
+    }
+
+    fn g5_pathbuf(&self) -> PathBuf {
+        self.g5_pathbuf()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -163,6 +194,8 @@ enum Message {
     ProtocolInputChanged(ProtocolInputType, String),
     ToggleTimer,
     RemovePath(usize), 
+    AddMobilePathEntry,
+    RemoveMobilePathEntry(usize),
     SelectedDropDownChanged(SelectedDropDown),
 }
 
@@ -191,6 +224,7 @@ enum Screen {
     Protocol_5G,
     _5G_Zone,
     _5G_Point,
+    Mobile_Point,
     Settings
 }
 
@@ -207,6 +241,9 @@ enum FileTarget {
     ProtokolPath,
     MultiplePaths,
     ProtocolPointsPath,
+    ProtocolMobilePath,
+    MobileLtePath(usize),
+    Mobile5GPath(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -214,6 +251,7 @@ enum ToggleTarget {
     GenerateMissingOperators,
     UseLTEFilter,
     Use5GFilter,
+    UseMultipleFilters,
     UseProtocolPoints,
 }
 
@@ -233,6 +271,7 @@ impl AppState {
                 second_output_path: String::new(),
                 is_timer_running: false,
                 selected_dropdown: SelectedDropDown::None,
+                mobile_paths: Vec::new(),
 
                 measured_city: String::new(),
                 total_power: "".to_string(), // Predvolená hodnota
@@ -374,6 +413,20 @@ impl AppState {
                             self.settings.protocol_points_path = path.clone();
                             trigger_timmer = true;
                         }
+                        FileTarget::ProtocolMobilePath => {
+                            self.settings.protocol_mobile_path = path.clone();
+                            trigger_timmer = true;
+                        }
+                        FileTarget::MobileLtePath(index) => {
+                            if let Some(entry) = self.mobile_paths.get_mut(index) {
+                                entry.lte_path = path.clone();
+                            }
+                        }
+                        FileTarget::Mobile5GPath(index) => {
+                            if let Some(entry) = self.mobile_paths.get_mut(index) {
+                                entry.g5_path = path.clone();
+                            }
+                        }
                     }
                     self.logs.push((format!("Cesta vybraná: {}", path), TerminalMessageType::Success));
                 } else {
@@ -412,6 +465,20 @@ impl AppState {
                         self.settings.protocol_points_path = val;
                         return Task::done(Message::ToggleTimer);
                     }
+                    FileTarget::ProtocolMobilePath => {
+                        self.settings.protocol_mobile_path = val;
+                        return Task::done(Message::ToggleTimer);
+                    }
+                    FileTarget::MobileLtePath(index) => {
+                        if let Some(entry) = self.mobile_paths.get_mut(index) {
+                            entry.lte_path = val;
+                        }
+                    }
+                    FileTarget::Mobile5GPath(index) => {
+                        if let Some(entry) = self.mobile_paths.get_mut(index) {
+                            entry.g5_path = val;
+                        }
+                    }
                     _ => ()
                 }
                 Task::none()},
@@ -422,6 +489,7 @@ impl AppState {
                     ToggleTarget::GenerateMissingOperators => {self.settings.generate_missing_operators = val}
                     ToggleTarget::UseLTEFilter => {self.settings.use_lte_filter = val}
                     ToggleTarget::Use5GFilter => {self.settings.use_5g_filter = val}
+                    ToggleTarget::UseMultipleFilters => {self.settings.use_multiple_filters = val}
                     ToggleTarget::UseProtocolPoints => {self.settings.use_protocol_points = val}
                 }
 
@@ -439,6 +507,7 @@ impl AppState {
                 let generate_missing_operators = self.settings.generate_missing_operators.clone();
                 let use_lte_filter = self.settings.use_lte_filter.clone();
                 let use_5g_filter = self.settings.use_5g_filter.clone();
+                let use_multiple_filters = self.settings.use_multiple_filters.clone();
                 let filter_lte_path = PathBuf::from(self.settings.filter_lte_path.clone());
                 let filter_5g_path = PathBuf::from(self.settings.filter_5g_path.clone());
                 let grid_path = PathBuf::from(self.settings.zone_file_path.clone());
@@ -448,6 +517,7 @@ impl AppState {
                 let output_path = PathBuf::from(self.output_path.clone());
                 let second_output_path = PathBuf::from(self.second_output_path.clone());
                 let protocol_path = PathBuf::from(self.settings.protokol_path.clone());
+                let protocol_mobile_path = PathBuf::from(self.settings.protocol_mobile_path.clone());
                 let measured_city = self.measured_city.clone();
                 let total_power: f32 = self.total_power.parse().unwrap_or(0.0);
                 let sinr: f32 = self.sinr.parse().unwrap_or(0.0);
@@ -461,6 +531,7 @@ impl AppState {
                     .iter()
                     .map(PathBuf::from)
                     .collect();
+                let mobile_paths = self.mobile_paths.clone();
                 if max_distance <= 0.0 && matches!(screen, Screen::_5G_Point | Screen::LTE_Point){
                     self.logs.push(("Veľkosť bodu musí byť väčšie ako 0.".to_string(), TerminalMessageType::Error));
                     self.is_generating = false;
@@ -489,6 +560,7 @@ impl AppState {
                         Screen::_5G_Zone => process_dataset::<FiveGRecord>(grid_path,first_path, output_path,generate_missing_operators, use_5g_filter,filter_5g_path),
                         Screen::_5G_Point => process_point_dataset::<FiveGRecord>(multiple_paths, output_path, filter_5g_path, protocol_point_path, second_output_path, use_5g_filter, max_distance, generate_missing_operators,threshold_sinr,threshold_rsrp),
                         Screen::LTE_Point => process_point_dataset::<LteRecord>(multiple_paths, output_path, filter_lte_path,protocol_point_path, second_output_path, use_lte_filter, max_distance,  generate_missing_operators,threshold_sinr,threshold_rsrp),
+                        Screen::Mobile_Point => process_multiple_points_dataset::<MobilePathEntry>(mobile_paths, output_path, filter_lte_path, filter_5g_path, Some(protocol_mobile_path), second_output_path, use_multiple_filters, max_distance, generate_missing_operators, threshold_sinr, threshold_rsrp),
                         _ => Err("Nepodporovaný typ obrazovky".to_string()),
                     }
                 })
@@ -527,7 +599,19 @@ impl AppState {
             }
             Task::none()
         }
-            _ => {Task::none()}
+            Message::AddMobilePathEntry => {
+                self.mobile_paths.push(MobilePathEntry {
+                    lte_path: String::new(),
+                    g5_path: String::new(),
+                });
+                Task::none()
+            }
+            Message::RemoveMobilePathEntry(index) => {
+                if index < self.mobile_paths.len() {
+                    self.mobile_paths.remove(index);
+                }
+                Task::none()
+            }
         }
     }
 
@@ -615,6 +699,7 @@ impl AppState {
                             column![
                                 button("LTE").on_press(Message::ToggleScreen(Screen::LTE_Point)).width(Length::Fill),
                                 button("5G").on_press(Message::ToggleScreen(Screen::_5G_Point)).width(Length::Fill),
+                                button("5G Mobil").on_press(Message::ToggleScreen(Screen::Mobile_Point)).width(Length::Fill),
                             ]
                             .spacing(5)
                             .padding(Padding { top: 5.0, right: 0.0, bottom: 5.0, left: 20.0 })
@@ -1232,11 +1317,11 @@ impl AppState {
                 text("Konfigurácia LTE Body Modulu").size(32).font(bold_font),
                 row![
                     text("Filtre Operátorov Folder:").width(175).size(16),
-                    text_input("Cesta k priečinku...", &self.settings.filter_5g_path)
-                        .on_input(|text| Message::PathChanged(FileTarget::Filter5GPath, text))
+                    text_input("Cesta k priečinku...", &self.settings.filter_lte_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::FilterLTEPath, text))
                         .padding(10),
                     button("Select Folder").on_press(Message::SelectFolderClicked {
-                                                target: FileTarget::Filter5GPath
+                                                target: FileTarget::FilterLTEPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
@@ -1340,7 +1425,7 @@ impl AppState {
                 
                 row![
                     text("Použit filtrovanie:").size(16),
-                    toggler(self.settings.use_5g_filter).on_toggle(|value| Message::ToggleChanged(ToggleTarget::Use5GFilter, value))
+                    toggler(self.settings.use_lte_filter).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseLTEFilter, value))
 
                     
                 ].spacing(30).align_y(Alignment::Center),
@@ -1387,6 +1472,204 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center)
             ]
             .spacing(20).padding(40) // <--- 1. PADDING DAJ SEM (obsah bude odsadený)
+            )
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)},
+            Screen::Mobile_Point => {container(scrollable(
+            column![
+                text("Konfigurácia 5G Mobil Body Modulu").size(32).font(bold_font),
+
+                row![
+                    text("LTE Operátori Folder:").width(175).size(16),
+                    text_input("Cesta k priečinku...", &self.settings.filter_lte_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::FilterLTEPath, text))
+                        .padding(10),
+                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                                                target: FileTarget::FilterLTEPath
+                                            }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("5G Operátori Folder:").width(175).size(16),
+                    text_input("Cesta k priečinku...", &self.settings.filter_5g_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::Filter5GPath, text))
+                        .padding(10),
+                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                                                target: FileTarget::Filter5GPath
+                                            }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                container(
+                    column![
+                        text("Mobile File Paths:").size(16).font(bold_font),
+
+                        scrollable(
+                            container(
+                                column(
+                                    self.mobile_paths.iter().enumerate().map(|(i, entry)| {
+                                        container(
+                                            column![
+                                            row![
+                                                text(format!("Bod {}", i + 1)).size(14).font(bold_font),
+                                                container(row![]).width(Length::Fill),
+                                                button(text("X").size(14))
+                                                    .on_press(Message::RemoveMobilePathEntry(i))
+                                                    .padding([5, 10])
+                                                    .style(button::danger)
+                                            ]
+                                            .spacing(10)
+                                            .align_y(Alignment::Center),
+
+                                            row![
+                                                text("LTE cesta:").width(100).size(14),
+                                                text_input("Cesta k LTE súboru...", &entry.lte_path)
+                                                    .on_input(move |text| Message::PathChanged(FileTarget::MobileLtePath(i), text))
+                                                    .padding(10),
+                                                button("Pridať cestu")
+                                                    .on_press(Message::SelectFileClicked {
+                                                        target: FileTarget::MobileLtePath(i),
+                                                        filter_name: "CSV Súbory",
+                                                        extensions: &["csv"],
+                                                    })
+                                                    .padding(10),
+                                            ].spacing(15).align_y(Alignment::Center),
+
+                                            row![
+                                                text("5G cesta:").width(100).size(14),
+                                                text_input("Cesta k 5G súboru...", &entry.g5_path)
+                                                    .on_input(move |text| Message::PathChanged(FileTarget::Mobile5GPath(i), text))
+                                                    .padding(10),
+                                                button("Pridať cestu")
+                                                    .on_press(Message::SelectFileClicked {
+                                                        target: FileTarget::Mobile5GPath(i),
+                                                        filter_name: "CSV Súbory",
+                                                        extensions: &["csv"],
+                                                    })
+                                                    .padding(10),
+                                            ].spacing(15).align_y(Alignment::Center),
+                                            ]
+                                            .spacing(10)
+                                        )
+                                        .padding(Padding {top: 5.0, right: 15.0, bottom: 5.0, left: 10.0})
+                                        .padding(10)
+                                        .style(container::bordered_box)
+                                        .into()
+                                    })
+                                )
+                                .spacing(10)
+                            )
+                            .padding(Padding { top: 0.0, right: 24.0, bottom: 0.0, left: 0.0 })
+                        )
+                        .height(Length::Fixed(220.0))
+                        .width(Length::Fill),
+
+                        button(
+                            row![
+                                text("+ Pridať bod").size(14)
+                            ].spacing(5).align_y(Alignment::Center)
+                        )
+                        .on_press(Message::AddMobilePathEntry)
+                        .padding(10)
+                        .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                )
+                .padding(15)
+                .style(container::bordered_box)
+                .width(Length::Fill),
+
+                row![
+                    text("Output Path:").width(150).size(16),
+                    text_input("Cesta pre uloženie...", &self.output_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SaveFileClicked {
+                                                target: FileTarget::OutputPath,
+                                                default_name: "zony.csv",
+                                                filter_name: "CSV súbory",
+                                                extensions: &["csv"],
+                                            }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Protokol File Path:").width(150).size(16),
+                    text_input("Cesta pre uloženie...", &self.settings.protocol_mobile_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::ProtocolMobilePath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SelectFileClicked {
+                        target: FileTarget::ProtocolMobilePath,
+                        filter_name: "XLSX Súbory",
+                        extensions: &["xlsx"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Output Protokol Path:").width(150).size(16),
+                    text_input("Cesta pre uloženie...", &self.second_output_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::SecondOutputPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SaveFileClicked {
+                        target: FileTarget::SecondOutputPath,
+                        default_name: "protokol-z-merania.xlsx",
+                        filter_name: "Excel súbory",
+                        extensions: &["xlsx"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Vygenerovať chýbajúcich operátorov:").size(16),
+                    toggler(self.settings.generate_missing_operators).on_toggle(|value| Message::ToggleChanged(ToggleTarget::GenerateMissingOperators, value))
+                ].spacing(30).align_y(Alignment::Center),
+
+                row![
+                    text("Pouzit filtrovanie:").size(16),
+                    toggler(self.settings.use_multiple_filters).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseMultipleFilters, value))
+                ].spacing(30).align_y(Alignment::Center),
+
+                row![
+                    text("Vygenerovat protokol:").size(16),
+                    toggler(self.settings.use_protocol_points).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseProtocolPoints, value))
+                ].spacing(30).align_y(Alignment::Center),
+
+                row![
+                    text("Veľkosť bodu (polomer v metoch):").size(16),
+                    text_input("1.5", &self.max_distance_of_point)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::MaxDistance, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Nastav minimalny SSS RSRP:").size(16),
+                    text_input("-20.0", &self.threshold_rsrp)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdRsrp, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Nastav minimalny SSS SINR:").size(16),
+                    text_input("-20.0", &self.threshold_sinr)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdSinr, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                        .padding([12, 40])
+                        .style(button::primary);
+                    if self.is_generating {
+                        btn
+                    } else {
+                        btn.on_press(Message::GenerateClicked)
+                    }
+                    }
+                ].spacing(30).align_y(Alignment::Center)
+            ]
+            .spacing(20).padding(40)
             )
         )
         .width(Length::Fill)

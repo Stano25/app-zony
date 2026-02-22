@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 use umya_spreadsheet;
 use calamine::{Reader, Xlsx, open_workbook,Data};
-use crate::managers::data_manager::RecordPoint;
+use crate::managers::data_manager::{RecordPoint, RecordPointMobile};
 
 // --- Pomocné funkcie (ponechaj ich v súbore nad update_excel_cell) ---
 
@@ -357,6 +357,88 @@ pub fn write_measurements_to_excel(
     }
 
     // 5. Uloženie
+    umya_spreadsheet::writer::xlsx::write(&book, file_path)
+        .map_err(|e| format!("Chyba pri ukladaní Excelu: {}", e))?;
+
+    Ok(())
+}
+
+pub fn write_measurements_to_excel_mobile(
+    file_path: &PathBuf,
+    data: &Vec<RecordPointMobile>
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut book = umya_spreadsheet::reader::xlsx::read(file_path)
+        .map_err(|e| format!("Chyba pri čítaní Excelu: {}", e))?;
+
+    let sheet = book.get_sheet_mut(&0)
+        .ok_or("Súbor neobsahuje žiadne hárky")?;
+
+    let mut header_row = 0;
+    let mut date_col = 0;
+    let mut found = false;
+
+    for cell in sheet.get_cell_collection() {
+        if cell.get_value().trim() == "Dátum" {
+            header_row = *cell.get_coordinate().get_row_num();
+            date_col = *cell.get_coordinate().get_col_num();
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        return Err("V Exceli sa nenašla bunka s textom 'Dátum'".into());
+    }
+
+    let operator_row = if header_row > 1 { header_row - 1 } else { return Err("Hlavička je príliš vysoko".into()); };
+    let mut operator_columns: HashMap<(u16, u16), u32> = HashMap::new();
+
+    let max_col = date_col + 200;
+    let mut col = date_col + 4;
+
+    while col < max_col {
+        let mcc_cell = sheet.get_cell_value((col, operator_row));
+        let mnc_cell = sheet.get_cell_value((col + 1, operator_row));
+
+        let mcc_raw_string = mcc_cell.get_value();
+        let mnc_raw_string = mnc_cell.get_value();
+
+        let mcc_str = mcc_raw_string.trim();
+        let mnc_str = mnc_raw_string.trim();
+
+        if !mcc_str.is_empty() && !mnc_str.is_empty() {
+            let mcc_parsed = mcc_str.parse::<f64>().map(|f| f as u16).or_else(|_| mcc_str.parse::<u16>());
+            let mnc_parsed = mnc_str.parse::<f64>().map(|f| f as u16).or_else(|_| mnc_str.parse::<u16>());
+
+            if let (Ok(mcc), Ok(mnc)) = (mcc_parsed, mnc_parsed) {
+                operator_columns.insert((mcc, mnc), col);
+                col += 4;
+                continue;
+            }
+        }
+        col += 1;
+    }
+
+    let mut current_row = header_row + 1;
+
+    for point in data {
+        sheet.get_cell_mut((date_col, current_row)).set_value(&point.date);
+        sheet.get_cell_mut((date_col + 1, current_row)).set_value(&point.time);
+        sheet.get_cell_mut((date_col + 2, current_row)).set_value_number(point.lat);
+        sheet.get_cell_mut((date_col + 3, current_row)).set_value_number(point.lon);
+
+        for ((mcc, mnc), (rsrp, sinr, freq, nr_5g)) in &point.values {
+            if let Some(&start_col) = operator_columns.get(&(*mcc, *mnc)) {
+                sheet.get_cell_mut((start_col, current_row)).set_value_number(*rsrp);
+                sheet.get_cell_mut((start_col + 1, current_row)).set_value_number(*sinr);
+                sheet.get_cell_mut((start_col + 2, current_row)).set_value_number(*freq as f64);
+                sheet.get_cell_mut((start_col + 3, current_row)).set_value(nr_5g);
+            }
+        }
+
+        current_row += 1;
+    }
+
     umya_spreadsheet::writer::xlsx::write(&book, file_path)
         .map_err(|e| format!("Chyba pri ukladaní Excelu: {}", e))?;
 

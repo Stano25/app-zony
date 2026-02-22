@@ -12,7 +12,7 @@ use geo::{Point as GeoPoint,Geodesic, Distance};
 use crate::managers::position_manager::lat_to_zone_letter;
 
 use super::position_manager::{get_zone_from_lon, to_utm_wgs84, wsg84_utm_to_lat_lon};
-use super::excel_manager::{update_excel_cell, get_positions_of_table,get_rows_of_table, fill_row, update_excel_cell_smart, write_measurements_to_excel};
+use super::excel_manager::{update_excel_cell, get_positions_of_table,get_rows_of_table, fill_row, update_excel_cell_smart, write_measurements_to_excel, write_measurements_to_excel_mobile};
 
 const CITY_CELL: &str = "Meraná obec:"; // Veľkosť mriežky v metroch
 const DATE_CELL: &str = "Dátum merania:";
@@ -420,6 +420,16 @@ pub trait RecordFilter: Clone + Sized {
 pub trait PointComparation: Clone {
     fn is_secondary_above_threshold(&self, threshold: f32) -> bool;
     fn is_primary_above_threshold_and_above_old(&self, threshold: f32, old_value: f64) -> bool;
+}
+
+fn has_5g_nr_yes(value: Option<&str>) -> bool {
+    match value {
+        Some(raw) => {
+            let clean = raw.trim().to_ascii_lowercase();
+            clean == "yes" || clean == "true"
+        }
+        None => false,
+    }
 }
 
 impl RecordFilter for LteRecord {
@@ -1074,6 +1084,19 @@ pub struct RecordPoint {
     pub values: HashMap<(u16,u16), (f64, f64, f64)>
 }
 
+pub struct RecordPointMobile {
+    pub date: String,
+    pub time: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub values: HashMap<(u16,u16), (f64, f64, f64, String)>
+}
+
+pub trait MobilePathProvider: Clone {
+    fn lte_pathbuf(&self) -> PathBuf;
+    fn g5_pathbuf(&self) -> PathBuf;
+}
+
 pub fn get_grid_map(grid_path: PathBuf) -> Result<(HashMap<(i32, i32), u32>, HashMap<u32, GridSquare>), Box<dyn Error>>{
     let mut grid_map: HashMap<(i32, i32), u32> = HashMap::new();
     let mut grid_map_info: HashMap<u32, GridSquare> = HashMap::new();
@@ -1623,7 +1646,11 @@ fn calculate_protocol_data<T>(records: &Vec<(T, GridSquare)>, table_rows: &HashM
 
         let valid_records_outside = if is_lte_mode && nr_5g {
             all_records.iter()
-            .filter(|(record, _)| record.get_rsrp().unwrap() as f32 >= limit_outside && record.get_sinr().unwrap() as f32 >= sinr_value && record.get_5g_nr().unwrap().eq_ignore_ascii_case("yes"))
+            .filter(|(record, _)| {
+                record.get_rsrp().unwrap() as f32 >= limit_outside
+                    && record.get_sinr().unwrap() as f32 >= sinr_value
+                    && has_5g_nr_yes(record.get_5g_nr().as_deref())
+            })
             .collect::<Vec<&&(T, GridSquare)>>()
         } else if is_lte_mode {
             all_records.iter()
@@ -1642,7 +1669,11 @@ fn calculate_protocol_data<T>(records: &Vec<(T, GridSquare)>, table_rows: &HashM
 
         let valid_records_inside = if is_lte_mode && nr_5g {
             all_records.iter()
-            .filter(|(record, _)| record.get_rsrp().unwrap() as f32 >= limit_inside && record.get_sinr().unwrap() as f32 >= sinr_value && record.get_5g_nr().unwrap().eq_ignore_ascii_case("yes"))
+            .filter(|(record, _)| {
+                record.get_rsrp().unwrap() as f32 >= limit_inside
+                    && record.get_sinr().unwrap() as f32 >= sinr_value
+                    && has_5g_nr_yes(record.get_5g_nr().as_deref())
+            })
             .collect::<Vec<&&(T, GridSquare)>>()
         } else if is_lte_mode {
             all_records.iter()
@@ -1846,6 +1877,126 @@ where T: DeserializeOwned + Serialize + RecordFilter + RecordValidator + Clone +
 
     write_measurements_to_excel(&second_output, &record_points_vec)
         .map_err(|e| format!("Chyba pri zápise do Excelu: {}", e))?;
+
+    Ok(())
+}
+
+pub fn process_multiple_points_dataset<P>(
+    input: Vec<P>,
+    output: PathBuf,
+    lte_filter_path: PathBuf,
+    g5_filter_path: PathBuf,
+    protocol_path: Option<PathBuf>,
+    second_output: PathBuf,
+    use_filter: bool,
+    max_distance: f64,
+    _generate_missing_operators: bool,
+    threshold_sinr: f32,
+    threshold_rsrp: f32,
+) -> Result<(), String>
+where
+    P: MobilePathProvider,
+{
+    let (protocol_path, create_protocol) = if let Some(path) = protocol_path {
+        (path, true)
+    } else {
+        (PathBuf::new(), false)
+    };
+
+    let lte_filter_files = if use_filter {
+        Some(get_txt_from_file(lte_filter_path).map_err(|e| format!("Chyba načítania LTE filtrov: {}", e))?)
+    } else {
+        None
+    };
+
+    let g5_filter_files = if use_filter {
+        Some(get_txt_from_file(g5_filter_path).map_err(|e| format!("Chyba načítania 5G filtrov: {}", e))?)
+    } else {
+        None
+    };
+
+    let mut all_final_records: HashMap<(Point, u16, u16), FiveGRecord> = HashMap::new();
+    let mut all_nr_map: HashMap<(Point, u16, u16), String> = HashMap::new();
+
+    for mobile_entry in input {
+        let lte_path = mobile_entry.lte_pathbuf();
+        let g5_path = mobile_entry.g5_pathbuf();
+
+        let lte_raw_records = read_data_from_csv::<LteRecord>(lte_path.clone())
+            .map_err(|e| format!("Chyba pri čítaní LTE CSV {:?}: {}", lte_path, e))?;
+
+        if lte_raw_records.is_empty() {
+            continue;
+        }
+
+        let lte_filtered_records = LteRecord::apply_custom_filter(lte_raw_records, lte_filter_files.clone())
+            .map_err(|e| format!("Chyba pri aplikácii LTE filtra pre {:?}: {}", lte_path, e))?;
+
+        let lte_hash_records = assign_records_point::<LteRecord>(lte_filtered_records, max_distance)
+            .map_err(|e| format!("Chyba pri mapovaní LTE bodov pre {:?}: {}", lte_path, e))?;
+
+        // Zistíme pre každý (mcc, mnc) či aspoň 1 LTE záznam v bode má 5G nr = yes/true.
+        // Kľúč je len (mcc, mnc) – v rámci jedného mobile_entry je to jeden bod.
+        // Ak nájdeme "yes" pre daný (mcc, mnc), uložíme a ideme na ďalší operátor (break).
+        let mut lte_nr_map: HashMap<(u16, u16), bool> = HashMap::new();
+        for (_point, inner_map) in &lte_hash_records {
+            for ((mcc, mnc, _freq, _pci), records_vec) in inner_map {
+                let op_key = (*mcc, *mnc);
+                // Ak už vieme že tento operátor má yes, preskočíme
+                if *lte_nr_map.get(&op_key).unwrap_or(&false) {
+                    continue;
+                }
+                for r in records_vec {
+                    if has_5g_nr_yes(r.get_5g_nr().as_deref()) {
+                        lte_nr_map.insert(op_key, true);
+                        break; // Stačí 1 record s yes, ideme ďalej
+                    }
+                }
+                // Ak sme nenašli yes, nastavíme false (ak ešte nie je)
+                lte_nr_map.entry(op_key).or_insert(false);
+            }
+        }
+
+        let g5_raw_records = read_data_from_csv::<FiveGRecord>(g5_path.clone())
+            .map_err(|e| format!("Chyba pri čítaní 5G CSV {:?}: {}", g5_path, e))?;
+
+        let g5_filtered_records = FiveGRecord::apply_custom_filter(g5_raw_records, g5_filter_files.clone())
+            .map_err(|e| format!("Chyba pri aplikácii 5G filtra pre {:?}: {}", g5_path, e))?;
+
+        let g5_hash_records = assign_records_point::<FiveGRecord>(g5_filtered_records, max_distance)
+            .map_err(|e| format!("Chyba pri mapovaní 5G bodov pre {:?}: {}", g5_path, e))?;
+
+        let g5_temp_records = get_best_point_records::<FiveGRecord>(g5_hash_records, threshold_sinr, threshold_rsrp);
+        let g5_best_records = generate_missing_point_records::<FiveGRecord>(g5_temp_records);
+
+        let aligned_records = align_records_to_points::<FiveGRecord>(g5_best_records);
+
+        for ((point, mcc, mnc), rec) in aligned_records {
+            let has_nr = *lte_nr_map.get(&(mcc, mnc)).unwrap_or(&false);
+            let nr_value = if has_nr { "yes".to_string() } else { "no".to_string() };
+
+            all_nr_map.insert((point, mcc, mnc), nr_value);
+            all_final_records.insert((point, mcc, mnc), rec);
+        }
+    }
+
+    save_mobile_points_to_csv(output, &all_final_records, &all_nr_map)
+        .map_err(|e| format!("Chyba pri ukladaní Mobile CSV súboru: {}", e))?;
+
+    if !create_protocol {
+        return Ok(());
+    }
+
+    if second_output.as_os_str().is_empty() {
+        return Err("Je zapnuté generovanie Mobile protokolu, ale nezadali ste 'Output Protokol Path'.".to_string());
+    }
+
+    fs::copy(protocol_path, &second_output).map_err(|e| format!("Chyba pri kopírovaní protokolu: {}", e))?;
+
+    let record_points_vec = get_mobile_records_vec(&all_final_records, &all_nr_map);
+
+    write_measurements_to_excel_mobile(&second_output, &record_points_vec)
+        .map_err(|e| format!("Chyba pri zápise Mobile meraní do Excelu: {}", e))?;
 
     Ok(())
 }
@@ -2059,6 +2210,44 @@ where T: Serialize
     Ok(())
 }
 
+#[derive(Serialize)]
+struct MobileNrCsvRow {
+    //5g recod
+    #[serde(rename = "5G nr")]
+    nr_5g: String,
+}
+
+fn save_mobile_points_to_csv(
+    file_path: PathBuf,
+    records: &HashMap<(Point, u16, u16), FiveGRecord>,
+    nr_map: &HashMap<(Point, u16, u16), String>,
+) -> Result<(), Box<dyn Error>> {
+    let mut file = std::fs::File::create(file_path)?;
+    writeln!(file, "")?;
+
+    let mut wtr = csv::WriterBuilder::new()
+        .has_headers(false)
+        .delimiter(b';')
+        .from_writer(file);
+
+    if let Some((key, sample_record)) = records.iter().next() {
+        let mut headers = get_headers(sample_record)?;
+        headers.push("5G nr".to_string());
+        wtr.write_record(&headers)?;
+
+        let first_nr = nr_map.get(key).cloned().unwrap_or_else(|| "no".to_string());
+        wtr.serialize((sample_record, MobileNrCsvRow { nr_5g: first_nr }))?;
+
+        for (iter_key, record) in records.iter().skip(1) {
+            let nr_value = nr_map.get(iter_key).cloned().unwrap_or_else(|| "no".to_string());
+            wtr.serialize((record, MobileNrCsvRow { nr_5g: nr_value }))?;
+        }
+    }
+
+    wtr.flush()?;
+    Ok(())
+}
+
 fn get_records_vec<T>(
     records_hash: &HashMap<(Point, u16, u16), T>
 ) -> Vec<RecordPoint>
@@ -2106,6 +2295,47 @@ where T: RecordFilter + Clone,
                     values: vals,
                 };
                 record_points_vec.push(new_point);
+            }
+        }
+    }
+
+    record_points_vec
+}
+
+fn get_mobile_records_vec(
+    records_hash: &HashMap<(Point, u16, u16), FiveGRecord>,
+    nr_map: &HashMap<(Point, u16, u16), String>,
+) -> Vec<RecordPointMobile> {
+    let mut record_points_vec: Vec<RecordPointMobile> = Vec::new();
+
+    for ((point_key, mcc, mnc), record) in records_hash {
+        let r_lat = record.get_lat().unwrap_or(point_key.lat);
+        let r_lon = record.get_lon().unwrap_or(point_key.lon);
+        let r_rsrp = record.get_rsrp().unwrap_or(-140.0);
+        let r_sinr = record.get_sinr().unwrap_or(-20.0);
+        let r_freq_mhz = record.get_freq().unwrap_or(0) as f64 / 1_000_000.0;
+        let nr_flag = nr_map
+            .get(&(*point_key, *mcc, *mnc))
+            .cloned()
+            .unwrap_or_else(|| "no".to_string());
+
+        let existing_point = record_points_vec.iter_mut().find(|rp| rp.lat == r_lat && rp.lon == r_lon);
+
+        match existing_point {
+            Some(point) => {
+                point.values.insert((*mcc, *mnc), (r_rsrp, r_sinr, r_freq_mhz, nr_flag));
+            }
+            None => {
+                let mut vals = HashMap::new();
+                vals.insert((*mcc, *mnc), (r_rsrp, r_sinr, r_freq_mhz, nr_flag));
+
+                record_points_vec.push(RecordPointMobile {
+                    date: record.get_date(),
+                    time: record.get_time(),
+                    lat: r_lat,
+                    lon: r_lon,
+                    values: vals,
+                });
             }
         }
     }
