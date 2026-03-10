@@ -23,7 +23,7 @@ fn main() -> iced::Result {
         Ok(data) => {
             logs.push(("Systém pripravený.".to_string(), TerminalMessageType::Success));
             data
-        }, 
+        },
         
         Err(error) => {
             if let Some(io_err) = error.downcast_ref::<io::Error>() {

@@ -426,7 +426,7 @@ fn has_5g_nr_yes(value: Option<&str>) -> bool {
     match value {
         Some(raw) => {
             let clean = raw.trim().to_ascii_lowercase();
-            clean == "yes" || clean == "true"
+            clean == "yes" || clean == "true" || clean == "1"
         }
         None => false,
     }
@@ -1089,7 +1089,7 @@ pub struct RecordPointMobile {
     pub time: String,
     pub lat: f64,
     pub lon: f64,
-    pub values: HashMap<(u16,u16), (f64, f64, f64, String)>
+    pub values: HashMap<(u16,u16), (f64, f64, f64, i32)>
 }
 
 pub trait MobilePathProvider: Clone {
@@ -1515,8 +1515,18 @@ pub fn create_protocol(protocol_path: PathBuf, gsm_path: PathBuf, lte_path: Path
     let nr_5g_table_rows = get_rows_of_table(&output_path, nr_5g_table_pos).map_err(|e| format!("Chyba pri získavaní riadkov tabuľky NR 5G: {}", e))?;
     let (nr_5g_calculated_data, stats) = if !have_5g 
             {calculate_protocol_data::<LteRecord>(&lte_records, &nr_5g_table_rows, antenna_height, internal_environment, total_power, rsrp, sinr, true)}
-        else 
-            {calculate_protocol_5g_data(&fiveg_records, &nr_5g_table_rows, antenna_height, internal_environment, rsrp, sinr)};
+        else {
+            // Z LTE záznamov zistíme, ktoré štvorce (grid square ID) majú has_5g_nr_yes, rozdelené podľa (mcc, mnc)
+            let mut nr_5g_valid_squares: HashMap<(u16, u16), HashSet<u32>> = HashMap::new();
+            for (record, grid) in &lte_records {
+                if has_5g_nr_yes(record.get_5g_nr().as_deref()) {
+                    if let (Some(mcc), Some(mnc)) = (record.get_mcc(), record.get_mnc()) {
+                        nr_5g_valid_squares.entry((mcc, mnc)).or_insert_with(HashSet::new).insert(grid.id);
+                    }
+                }
+            }
+            calculate_protocol_5g_data(&fiveg_records, &nr_5g_table_rows, antenna_height, internal_environment, rsrp, sinr, &nr_5g_valid_squares)
+        };
     fill_row(&output_path, nr_5g_calculated_data).map_err(|e| format!("Chyba pri vyplneni tabulky: {}",e))?;
     let start_hight = if let Some(pos) = update_excel_cell_smart(&output_path, ZONES_PEOPLE_CELL, stats.as_str(),nr_5g_table_pos.1).map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))? {pos+1} else {1};
     Ok(())  
@@ -1720,7 +1730,7 @@ fn calculate_protocol_data<T>(records: &Vec<(T, GridSquare)>, table_rows: &HashM
     })
 }
 
-fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_rows: &HashMap<(u32,u32), (u16, u16)>, correction_height_value: f32, correction_surauding_value: f32, rsrp_value: f32, sinr_value: f32)
+fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_rows: &HashMap<(u32,u32), (u16, u16)>, correction_height_value: f32, correction_surauding_value: f32, rsrp_value: f32, sinr_value: f32, valid_squares: &HashMap<(u16, u16), HashSet<u32>>)
     -> (HashMap<(u32,u32), Vec<(f32,i32)>>,String)
 {
     let mut result = HashMap::new();
@@ -1732,6 +1742,7 @@ fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_ro
     let mut all_people_count: i32 = 0;
 
     for (pos, (mcc, mnc)) in table_rows {
+        // Všetky 5G záznamy pre operátora (pre celkový počet zón/obyvateľov)
         let all_records = records.iter()
             .filter(|(record, _)| record.get_mcc() == Some(*mcc) && record.get_mnc() == Some(*mnc))
             .collect::<Vec<&(FiveGRecord, GridSquare)>>();
@@ -1742,8 +1753,13 @@ fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_ro
             .sum();
 
         all_people_count = all_count_people;
+        // Pre valid záznamy filtrujeme len tie štvorce, ktoré majú v LTE has_5g_nr_yes
         let valid_records_outside = all_records.iter()
-            .filter(|(record, _)| record.get_rsrp().unwrap() as f32 >= limit_outside && record.get_sinr().unwrap() as f32 >= sinr_value)
+            .filter(|(record, grid)| {
+                record.get_rsrp().unwrap() as f32 >= limit_outside
+                    && record.get_sinr().unwrap() as f32 >= sinr_value
+                    && valid_squares.get(&(*mcc, *mnc)).map_or(false, |set| set.contains(&grid.id))
+            })
             .collect::<Vec<&&(FiveGRecord, GridSquare)>>();
         
         let valid_count_outside = valid_records_outside.len() as f32;
@@ -1752,7 +1768,11 @@ fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_ro
             .sum();
 
         let valid_records_inside = all_records.iter()
-            .filter(|(record, _)| record.get_rsrp().unwrap() as f32 >= limit_inside && record.get_sinr().unwrap() as f32 >= sinr_value)
+            .filter(|(record, grid)| {
+                record.get_rsrp().unwrap() as f32 >= limit_inside
+                    && record.get_sinr().unwrap() as f32 >= sinr_value
+                    && valid_squares.get(&(*mcc, *mnc)).map_or(false, |set| set.contains(&grid.id))
+            })
             .collect::<Vec<&&(FiveGRecord, GridSquare)>>();
 
         let valid_count_inside = valid_records_inside.len() as f32;
@@ -1916,7 +1936,7 @@ where
     };
 
     let mut all_final_records: HashMap<(Point, u16, u16), FiveGRecord> = HashMap::new();
-    let mut all_nr_map: HashMap<(Point, u16, u16), String> = HashMap::new();
+    let mut all_nr_map: HashMap<(Point, u16, u16), i32> = HashMap::new();
 
     for mobile_entry in input {
         let lte_path = mobile_entry.lte_pathbuf();
@@ -1973,7 +1993,7 @@ where
 
         for ((point, mcc, mnc), rec) in aligned_records {
             let has_nr = *lte_nr_map.get(&(mcc, mnc)).unwrap_or(&false);
-            let nr_value = if has_nr { "yes".to_string() } else { "no".to_string() };
+            let nr_value = if has_nr { 1 } else { 0 };
 
             all_nr_map.insert((point, mcc, mnc), nr_value);
             all_final_records.insert((point, mcc, mnc), rec);
@@ -2214,13 +2234,13 @@ where T: Serialize
 struct MobileNrCsvRow {
     //5g recod
     #[serde(rename = "5G nr")]
-    nr_5g: String,
+    nr_5g: i32,
 }
 
 fn save_mobile_points_to_csv(
     file_path: PathBuf,
     records: &HashMap<(Point, u16, u16), FiveGRecord>,
-    nr_map: &HashMap<(Point, u16, u16), String>,
+    nr_map: &HashMap<(Point, u16, u16), i32>,
 ) -> Result<(), Box<dyn Error>> {
     let mut file = std::fs::File::create(file_path)?;
     writeln!(file, "")?;
@@ -2235,11 +2255,11 @@ fn save_mobile_points_to_csv(
         headers.push("5G nr".to_string());
         wtr.write_record(&headers)?;
 
-        let first_nr = nr_map.get(key).cloned().unwrap_or_else(|| "no".to_string());
+        let first_nr = nr_map.get(key).cloned().unwrap_or(0);
         wtr.serialize((sample_record, MobileNrCsvRow { nr_5g: first_nr }))?;
 
         for (iter_key, record) in records.iter().skip(1) {
-            let nr_value = nr_map.get(iter_key).cloned().unwrap_or_else(|| "no".to_string());
+            let nr_value = nr_map.get(iter_key).cloned().unwrap_or(0);
             wtr.serialize((record, MobileNrCsvRow { nr_5g: nr_value }))?;
         }
     }
@@ -2304,7 +2324,7 @@ where T: RecordFilter + Clone,
 
 fn get_mobile_records_vec(
     records_hash: &HashMap<(Point, u16, u16), FiveGRecord>,
-    nr_map: &HashMap<(Point, u16, u16), String>,
+    nr_map: &HashMap<(Point, u16, u16), i32>,
 ) -> Vec<RecordPointMobile> {
     let mut record_points_vec: Vec<RecordPointMobile> = Vec::new();
 
@@ -2317,7 +2337,7 @@ fn get_mobile_records_vec(
         let nr_flag = nr_map
             .get(&(*point_key, *mcc, *mnc))
             .cloned()
-            .unwrap_or_else(|| "no".to_string());
+            .unwrap_or(0);
 
         let existing_point = record_points_vec.iter_mut().find(|rp| rp.lat == r_lat && rp.lon == r_lon);
 

@@ -432,7 +432,8 @@ pub fn write_measurements_to_excel_mobile(
                 sheet.get_cell_mut((start_col, current_row)).set_value_number(*rsrp);
                 sheet.get_cell_mut((start_col + 1, current_row)).set_value_number(*sinr);
                 sheet.get_cell_mut((start_col + 2, current_row)).set_value_number(*freq as f64);
-                sheet.get_cell_mut((start_col + 3, current_row)).set_value(nr_5g);
+                let nr_5g_str = if *nr_5g == 1 { "yes" } else { "no" };
+                sheet.get_cell_mut((start_col + 3, current_row)).set_value(nr_5g_str);
             }
         }
 
