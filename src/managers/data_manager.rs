@@ -12,7 +12,7 @@ use geo::{Point as GeoPoint,Geodesic, Distance};
 use crate::managers::position_manager::lat_to_zone_letter;
 
 use super::position_manager::{get_zone_from_lon, to_utm_wgs84, wsg84_utm_to_lat_lon};
-use super::excel_manager::{update_excel_cell, get_positions_of_table,get_rows_of_table, fill_row, update_excel_cell_smart, write_measurements_to_excel, write_measurements_to_excel_mobile};
+use super::excel_manager::{update_excel_cell, get_positions_of_table,get_rows_of_table, fill_row, fill_row_db, update_excel_cell_smart, write_measurements_to_excel, write_measurements_to_excel_mobile};
 
 const CITY_CELL: &str = "Meraná obec:"; // Veľkosť mriežky v metroch
 const DATE_CELL: &str = "Dátum merania:";
@@ -1808,6 +1808,214 @@ fn calculate_protocol_5g_data(records: &Vec<(FiveGRecord, GridSquare)>, table_ro
     (result, if records.len() > 0 {format!("{}/{}", all_zones_count, all_people_count)} else {
         String::from("0/0")
     })
+}
+
+fn calculate_protocol_db_lte_data(
+    records: &Vec<(LteRecord, GridSquare)>,
+    table_rows: &HashMap<(u32,u32), (u16, u16)>,
+    correction_height_value: f32,
+    correction_environment_value: f32,
+    rsrp_value: f32,
+    sinr_value: f32,
+) -> (HashMap<(u32,u32), Vec<f64>>, String) {
+    let mut result = HashMap::new();
+
+    let limit = rsrp_value + correction_height_value + correction_environment_value;
+
+    let mut all_zones_count = 0;
+    let mut all_people_count: i32 = 0;
+
+    for (pos, (mcc, mnc)) in table_rows {
+        let all_records: Vec<&(LteRecord, GridSquare)> = records.iter()
+            .filter(|(record, _)| record.get_mcc() == Some(*mcc) && record.get_mnc() == Some(*mnc))
+            .collect();
+
+        let total_zones = all_records.len() as f64;
+        all_zones_count = total_zones as i32;
+
+        let total_people: i32 = all_records.iter()
+            .map(|(_, square)| square.pocet_obyv)
+            .sum();
+        all_people_count = total_people;
+
+        let covered_records: Vec<&&(LteRecord, GridSquare)> = all_records.iter()
+            .filter(|(record, _)| {
+                record.get_rsrp().unwrap_or(-999.0) as f32 >= limit
+                    && record.get_sinr().unwrap_or(-999.0) as f32 >= sinr_value
+            })
+            .collect();
+
+        let covered_zones = covered_records.len() as f64;
+        let uncovered_zones = total_zones - covered_zones;
+
+        let covered_people: i32 = covered_records.iter()
+            .map(|(_, square)| square.pocet_obyv)
+            .sum();
+        let uncovered_people = total_people - covered_people;
+
+        let fill = if total_zones > 0.0 {
+            vec![
+                uncovered_zones / total_zones,
+                covered_zones,
+                uncovered_zones,
+                if total_people > 0 { uncovered_people as f64 / total_people as f64 } else { 0.0 },
+                covered_people as f64,
+                uncovered_people as f64,
+            ]
+        } else {
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        };
+
+        result.insert(*pos, fill);
+    }
+
+    (result, if records.len() > 0 { format!("{}/{}", all_zones_count, all_people_count) } else {
+        String::from("0/0")
+    })
+}
+
+fn calculate_protocol_db_5g_data(
+    fiveg_records: &Vec<(FiveGRecord, GridSquare)>,
+    lte_records: &Vec<(LteRecord, GridSquare)>,
+    table_rows: &HashMap<(u32,u32), (u16, u16)>,
+    correction_height_value: f32,
+    correction_environment_value: f32,
+    rsrp_value: f32,
+    sinr_value: f32,
+) -> (HashMap<(u32,u32), Vec<f64>>, String) {
+    let mut result = HashMap::new();
+
+    let limit = rsrp_value + correction_height_value + correction_environment_value;
+
+    let mut all_zones_count = 0;
+    let mut all_people_count: i32 = 0;
+
+    // Zistíme, ktoré štvorce sú pokryté LTE (pre každého operátora)
+    let mut lte_covered_squares: HashMap<(u16, u16), HashSet<u32>> = HashMap::new();
+    for (record, grid) in lte_records {
+        if let (Some(mcc), Some(mnc)) = (record.get_mcc(), record.get_mnc()) {
+            if record.get_rsrp().unwrap_or(-999.0) as f32 >= limit
+                && record.get_sinr().unwrap_or(-999.0) as f32 >= sinr_value
+            {
+                lte_covered_squares.entry((mcc, mnc))
+                    .or_insert_with(HashSet::new)
+                    .insert(grid.id);
+            }
+        }
+    }
+
+    for (pos, (mcc, mnc)) in table_rows {
+        let all_records: Vec<&(FiveGRecord, GridSquare)> = fiveg_records.iter()
+            .filter(|(record, _)| record.get_mcc() == Some(*mcc) && record.get_mnc() == Some(*mnc))
+            .collect();
+
+        let total_zones = all_records.len() as f64;
+        all_zones_count = total_zones as i32;
+
+        let total_people: i32 = all_records.iter()
+            .map(|(_, square)| square.pocet_obyv)
+            .sum();
+        all_people_count = total_people;
+
+        // Štvorec je pokrytý 5G len ak 5G aj LTE spĺňajú podmienky
+        let covered_records: Vec<&&(FiveGRecord, GridSquare)> = all_records.iter()
+            .filter(|(record, grid)| {
+                record.get_rsrp().unwrap_or(-999.0) as f32 >= limit
+                    && record.get_sinr().unwrap_or(-999.0) as f32 >= sinr_value
+                    && lte_covered_squares.get(&(*mcc, *mnc))
+                        .map_or(false, |set| set.contains(&grid.id))
+            })
+            .collect();
+
+        let covered_zones = covered_records.len() as f64;
+        let uncovered_zones = total_zones - covered_zones;
+
+        let covered_people: i32 = covered_records.iter()
+            .map(|(_, square)| square.pocet_obyv)
+            .sum();
+        let uncovered_people = total_people - covered_people;
+
+        let fill = if total_zones > 0.0 {
+            vec![
+                uncovered_zones / total_zones,
+                covered_zones,
+                uncovered_zones,
+                if total_people > 0 { uncovered_people as f64 / total_people as f64 } else { 0.0 },
+                covered_people as f64,
+                uncovered_people as f64,
+            ]
+        } else {
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        };
+
+        result.insert(*pos, fill);
+    }
+
+    (result, if fiveg_records.len() > 0 { format!("{}/{}", all_zones_count, all_people_count) } else {
+        String::from("0/0")
+    })
+}
+
+pub fn create_protocol_db(
+    protocol_path: PathBuf,
+    lte_path: PathBuf,
+    fiveg_path: PathBuf,
+    output_path: PathBuf,
+    measured_city: String,
+    sinr: f32,
+    rsrp: f32,
+    antenna_height: f32,
+    internal_environment: f32,
+) -> Result<(), String> {
+    fs::copy(protocol_path, &output_path)
+        .map_err(|e| format!("Chyba pri kopírovaní protokolu: {}", e))?;
+
+    let lte_records = read_record_and_grid::<LteRecord>(lte_path)
+        .map_err(|e| format!("Chyba pri čítaní LTE dát: {}", e))?;
+
+    let fiveg_records = read_record_and_grid::<FiveGRecord>(fiveg_path)
+        .map_err(|e| format!("Chyba pri čítaní 5G dát: {}", e))?;
+
+    // Metadata
+    update_excel_cell(&output_path, CITY_CELL, measured_city.trim())
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+
+    let date = get_date_from_records(&lte_records)
+        .or_else(|| get_date_from_records(&fiveg_records))
+        .or_else(|| Some(String::from("Neznámy dátum"))).unwrap();
+    update_excel_cell(&output_path, DATE_CELL, date.as_str())
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+
+    update_excel_cell(&output_path, ANTENNA_CELL, format!("{} dB", antenna_height).as_str())
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+    update_excel_cell(&output_path, ENVIRONMENT_CELL, format!("{} dB", internal_environment).as_str())
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+
+    // LTE tabuľka
+    let lte_table_pos = get_positions_of_table(&output_path, LTE_TABLE_START_CELL)
+        .map_err(|e| format!("Chyba pri získavaní pozície tabuľky LTE: {}", e))?;
+    let lte_table_rows = get_rows_of_table(&output_path, lte_table_pos)
+        .map_err(|e| format!("Chyba pri získavaní riadkov tabuľky LTE: {}", e))?;
+    let (lte_data, stats) = calculate_protocol_db_lte_data(
+        &lte_records, &lte_table_rows, antenna_height, internal_environment, rsrp, sinr);
+    fill_row_db(&output_path, lte_data)
+        .map_err(|e| format!("Chyba pri vyplneni tabulky: {}", e))?;
+    let _ = update_excel_cell_smart(&output_path, ZONES_PEOPLE_CELL, stats.as_str(), lte_table_pos.1)
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+
+    // 5G NR tabuľka
+    let nr_5g_table_pos = get_positions_of_table(&output_path, NR_5G_TABLE_START_CELL)
+        .map_err(|e| format!("Chyba pri získavaní pozície tabuľky NR 5G: {}", e))?;
+    let nr_5g_table_rows = get_rows_of_table(&output_path, nr_5g_table_pos)
+        .map_err(|e| format!("Chyba pri získavaní riadkov tabuľky NR 5G: {}", e))?;
+    let (nr_5g_data, stats) = calculate_protocol_db_5g_data(
+        &fiveg_records, &lte_records, &nr_5g_table_rows, antenna_height, internal_environment, rsrp, sinr);
+    fill_row_db(&output_path, nr_5g_data)
+        .map_err(|e| format!("Chyba pri vyplneni tabulky: {}", e))?;
+    let _ = update_excel_cell_smart(&output_path, ZONES_PEOPLE_CELL, stats.as_str(), nr_5g_table_pos.1)
+        .map_err(|e| format!("Chyba pri aktualizácii Excelu: {}", e))?;
+
+    Ok(())
 }
 
 pub fn process_point_dataset<T>(

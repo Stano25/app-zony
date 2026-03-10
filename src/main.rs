@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use iced::{Element, Length, Task, Theme, Color, Background, Alignment, Font, font::Weight, Padding};
 use std::io;
 mod managers;
-use managers::data_manager::{FiveGRecord,GridSquare, GsmRecord, LteRecord,process_dataset, get_grid_map,create_protocol,process_point_dataset, process_multiple_points_dataset, MobilePathProvider};
+use managers::data_manager::{FiveGRecord,GridSquare, GsmRecord, LteRecord,process_dataset, get_grid_map,create_protocol,create_protocol_db,process_point_dataset, process_multiple_points_dataset, MobilePathProvider};
 use managers::json_manager::{try_read_json,create_blank_json, save_json};
 
 const folder_name: &str = "App-zony-100m";
@@ -74,6 +74,7 @@ pub struct AppSettings {
     pub protokol_path: String,
     pub protocol_points_path: String,
     pub protocol_mobile_path: String,
+    pub protocol_db_path: String,
 
     pub is_dark_mode: bool,
     pub is_terminal_open: bool,
@@ -95,6 +96,7 @@ impl AppSettings {
             protokol_path: "".to_string(),
             protocol_points_path: "".to_string(),
             protocol_mobile_path: "".to_string(),
+            protocol_db_path: "".to_string(),
             generate_missing_operators: true,
             use_lte_filter: true,
             use_5g_filter: true,
@@ -222,6 +224,7 @@ enum Screen {
     LTE_Point,
     Protocol_LTE,
     Protocol_5G,
+    Protocol_DB,
     _5G_Zone,
     _5G_Point,
     Mobile_Point,
@@ -242,6 +245,7 @@ enum FileTarget {
     MultiplePaths,
     ProtocolPointsPath,
     ProtocolMobilePath,
+    ProtocolDBPath,
     MobileLtePath(usize),
     Mobile5GPath(usize),
 }
@@ -417,6 +421,10 @@ impl AppState {
                             self.settings.protocol_mobile_path = path.clone();
                             trigger_timmer = true;
                         }
+                        FileTarget::ProtocolDBPath => {
+                            self.settings.protocol_db_path = path.clone();
+                            trigger_timmer = true;
+                        }
                         FileTarget::MobileLtePath(index) => {
                             if let Some(entry) = self.mobile_paths.get_mut(index) {
                                 entry.lte_path = path.clone();
@@ -469,6 +477,10 @@ impl AppState {
                         self.settings.protocol_mobile_path = val;
                         return Task::done(Message::ToggleTimer);
                     }
+                    FileTarget::ProtocolDBPath => {
+                        self.settings.protocol_db_path = val;
+                        return Task::done(Message::ToggleTimer);
+                    }
                     FileTarget::MobileLtePath(index) => {
                         if let Some(entry) = self.mobile_paths.get_mut(index) {
                             entry.lte_path = val;
@@ -518,6 +530,7 @@ impl AppState {
                 let second_output_path = PathBuf::from(self.second_output_path.clone());
                 let protocol_path = PathBuf::from(self.settings.protokol_path.clone());
                 let protocol_mobile_path = PathBuf::from(self.settings.protocol_mobile_path.clone());
+                let protocol_db_path = PathBuf::from(self.settings.protocol_db_path.clone());
                 let measured_city = self.measured_city.clone();
                 let total_power: f32 = self.total_power.parse().unwrap_or(0.0);
                 let sinr: f32 = self.sinr.parse().unwrap_or(0.0);
@@ -556,6 +569,9 @@ impl AppState {
                         }
                         Screen::Protocol_5G => {
                             create_protocol(protocol_path, first_path, second_path,Some(third_path) ,output_path,measured_city, total_power, sinr, rsrp, antenna_height, internal_environment)
+                        }
+                        Screen::Protocol_DB => {
+                            create_protocol_db(protocol_db_path, first_path, second_path, output_path, measured_city, sinr, rsrp, antenna_height, internal_environment)
                         }
                         Screen::_5G_Zone => process_dataset::<FiveGRecord>(grid_path,first_path, output_path,generate_missing_operators, use_5g_filter,filter_5g_path),
                         Screen::_5G_Point => process_point_dataset::<FiveGRecord>(multiple_paths, output_path, filter_5g_path, protocol_point_path, second_output_path, use_5g_filter, max_distance, generate_missing_operators,threshold_sinr,threshold_rsrp),
@@ -737,6 +753,7 @@ impl AppState {
                             column![
                                 button("LTE").on_press(Message::ToggleScreen(Screen::Protocol_LTE)).width(Length::Fill),
                                 button("5G").on_press(Message::ToggleScreen(Screen::Protocol_5G)).width(Length::Fill),
+                                button("DB").on_press(Message::ToggleScreen(Screen::Protocol_DB)).width(Length::Fill),
                             ]
                             .spacing(5)
                             .padding(Padding { top: 5.0, right: 0.0, bottom: 5.0, left: 20.0 })
@@ -1802,6 +1819,115 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center)
             ]
             .spacing(20).padding(40) // <--- 1. PADDING DAJ SEM (obsah bude odsadený)
+            )
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)},
+            Screen::Protocol_DB => {container(scrollable(
+            column![
+                text("Konfigurácia Protokol DB Modulu").size(32).font(bold_font),
+                
+                // Cesta k protokolu DB
+                row![
+                    text("Protokol DB File Path:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.settings.protocol_db_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::ProtocolDBPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SelectFileClicked {
+                        target: FileTarget::ProtocolDBPath,
+                        filter_name: "XLSX Súbory",
+                        extensions: &["xlsx"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                // LTE File Path
+                row![
+                    text("LTE File Path:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.first_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SelectFileClicked {
+                        target: FileTarget::FirstPath,
+                        filter_name: "CSV Súbory",
+                        extensions: &["csv"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                // 5G File Path
+                row![
+                    text("5G File Path:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.second_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::SecondPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SelectFileClicked {
+                        target: FileTarget::SecondPath,
+                        filter_name: "CSV Súbory",
+                        extensions: &["csv"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                // Output Path
+                row![
+                    text("Output Path:").width(150).size(16),
+                    text_input("Cesta pre uloženie...", &self.output_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SaveFileClicked {
+                        target: FileTarget::OutputPath,
+                        default_name: "protokol-db.xlsx",
+                        filter_name: "Excel súbory",
+                        extensions: &["xlsx"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Meraná obec:").size(16),
+                    text_input("Mesto/Obec...", &self.measured_city)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::City, text))
+                        .padding(10)
+                        .width(175),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Hodnota SINR:").size(16),
+                    text_input("-20.0", &self.sinr)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::Sinr, text))
+                        .padding(10)
+                        .width(100),
+
+                    text("Hodnota RSRP:").size(16),
+                    text_input("-20.0", &self.rsrp)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::Rsrp, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Korekcia výšky antény:").size(16),
+                    text_input("0.0", &self.antenna_height)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::AntennaHeight, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                row![
+                    text("Korekcia vnútorného prostredia:").size(16),
+                    text_input("0.0", &self.internal_environment)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::InternalEnv, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
+
+                // Generate Button
+                row![
+                    button(text("GENERATE").size(16).font(bold_font))
+                        .on_press(Message::GenerateClicked)
+                        .padding([12, 40])
+                        .style(button::primary)
+                ].spacing(30).align_y(Alignment::Center)
+            ]
+            .spacing(20).padding(40)
             )
         )
         .width(Length::Fill)

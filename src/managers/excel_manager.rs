@@ -260,6 +260,33 @@ pub fn update_excel_cell_smart(
     }
 }
 
+pub fn fill_row_db(file_path: &PathBuf, rows_info: HashMap<(u32,u32), Vec<f64>>) -> Result<(), Box<dyn std::error::Error>>{
+
+    let mut book = umya_spreadsheet::reader::xlsx::read(file_path)
+        .map_err(|e| format!("Chyba pri čítaní Excelu: {}", e))?;
+
+    let sheet = book.get_sheet_mut(&0)
+        .ok_or("Súbor neobsahuje žiadne hárky")?;
+
+    for ((start_col, row), data_vec) in rows_info {
+        
+        // Oprava indexovania (Calamine 0-based -> Umya 1-based)
+        let mut current_col = start_col + 1; 
+        let target_row = row + 1; 
+
+        for value in data_vec.iter() {
+            current_col += 1; 
+            sheet.get_cell_mut((current_col, target_row))
+                 .set_value_number(*value); 
+        }
+    }
+
+    let _ = umya_spreadsheet::writer::xlsx::write(&book, file_path)
+        .map_err(|e| format!("Chyba pri ukladaní Excelu: {}", e))?;
+
+    Ok(())
+}
+
 pub fn write_measurements_to_excel(
     file_path: &PathBuf,
     data: &Vec<RecordPoint>
