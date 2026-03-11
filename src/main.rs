@@ -1,4 +1,4 @@
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+﻿#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use iced::widget::{
@@ -819,11 +819,11 @@ impl AppState {
                 
                 // Riadok 1: GSM File Path
                 row![
-                    text("Zony File Path:").width(150).size(16),
+                    text("Súbor definovaných zón (100x100m):").width(150).size(16),
                     text_input("Cesta k súboru...", &self.settings.zone_file_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ZonePath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::ZonePath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -831,11 +831,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("GSM File Path:").width(150).size(16),
+                    text("GSM súbor:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::FirstPath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -844,11 +844,11 @@ impl AppState {
 
                 // Riadok 2: Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložit súbor ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -866,7 +866,7 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                    {let btn = button(text("GENEROVAŤ").size(16).font(bold_font))
                         .padding([12, 40])
                         .style(button::primary);
                     if self.is_generating {
@@ -888,11 +888,11 @@ impl AppState {
                 text("Konfigurácia LTE Zony Modulu").size(32).font(bold_font),
 
                 row![
-                    text("Zony File Path:").width(175).size(16),
+                    text("Súbor definovaných zón (100x100m):").width(175).size(16),
                     text_input("Cesta k súboru...", &self.settings.zone_file_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ZonePath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::ZonePath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -900,22 +900,22 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Filtre Operátorov Folder:").width(175).size(16),
+                    text("Priečinok filtrov operátorov:").width(175).size(16),
                     text_input("Cesta k priečinku...", &self.settings.filter_lte_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FilterLTEPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::FilterLTEPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
                 // Riadok 1: LTE File Path
                 row![
-                    text("LTE File Path:").width(175).size(16),
+                    text("LTE súbor:").width(175).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::FirstPath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -924,11 +924,11 @@ impl AppState {
 
                 // Riadok 2: Output Path
                 row![
-                    text("Output Path:").width(175).size(16),
+                    text("Uložiť súbor ako:").width(175).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -952,7 +952,7 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    button(text("GENERATE").size(16).font(bold_font))
+                    button(text("GENEROVAŤ").size(16).font(bold_font))
                         .on_press(Message::GenerateClicked)
                         .padding([12, 40])
                         .style(button::primary)
@@ -970,11 +970,11 @@ impl AppState {
                 
                 // Cesta k protokolu
                 row![
-                    text("Protokol File Path:").width(150).size(16),
+                    text("Súbor protokol:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.settings.protokol_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtokolPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtokolPath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -983,11 +983,11 @@ impl AppState {
 
                 // GSM File Path
                 row![
-                    text("GSM File Path:").width(150).size(16),
+                    text("Súbor GSM zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::FirstPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -996,11 +996,11 @@ impl AppState {
 
                 // LTE File Path
                 row![
-                    text("LTE File Path:").width(150).size(16),
+                    text("Súbor LTE zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.second_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::SecondPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1009,11 +1009,11 @@ impl AppState {
 
                 // Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                         target: FileTarget::OutputPath,
                         default_name: "protokol-z-merania.xlsx",
                         filter_name: "Excel súbory",
@@ -1071,7 +1071,7 @@ impl AppState {
 
                 // Generate Button
                 row![
-                    button(text("GENERATE").size(16).font(bold_font))
+                    button(text("GENEROVAŤ").size(16).font(bold_font))
                         .on_press(Message::GenerateClicked)
                         .padding([12, 40])
                         .style(button::primary)
@@ -1088,11 +1088,11 @@ impl AppState {
                 text("Konfigurácia 5G Zony Modulu").size(32).font(bold_font),
 
                 row![
-                    text("Zony File Path:").width(175).size(16),
+                    text("Súbor definovaných zón (100x100m):").width(175).size(16),
                     text_input("Cesta k súboru...", &self.settings.zone_file_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ZonePath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::ZonePath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -1100,21 +1100,21 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Filtre Operátorov Folder:").width(175).size(16),
+                    text("Priečinok filtrov operátorov:").width(175).size(16),
                     text_input("Cesta k priečinku...", &self.settings.filter_5g_path)
                         .on_input(|text| Message::PathChanged(FileTarget::Filter5GPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::Filter5GPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("5G File Path:").width(175).size(16),
+                    text("5G súbor:").width(175).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                                                 target: FileTarget::FirstPath,
                                                 filter_name: "CSV Súbory",
                                                 extensions: &["csv" ],
@@ -1123,11 +1123,11 @@ impl AppState {
 
                 // Riadok 2: Output Path
                 row![
-                    text("Output Path:").width(175).size(16),
+                    text("Uložiť súbor ako:").width(175).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -1149,7 +1149,7 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                    {let btn = button(text("GENEROVAŤ").size(16).font(bold_font))
                         .padding([12, 40])
                         .style(button::primary);
                     if self.is_generating {
@@ -1170,11 +1170,11 @@ impl AppState {
             column![
                 text("Konfigurácia 5G Body Modulu").size(32).font(bold_font),
                 row![
-                    text("Filtre Operátorov Folder:").width(175).size(16),
+                    text("Priečinok filtrov operátorov:").width(175).size(16),
                     text_input("Cesta k priečinku...", &self.settings.filter_5g_path)
                         .on_input(|text| Message::PathChanged(FileTarget::Filter5GPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::Filter5GPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
@@ -1183,7 +1183,7 @@ impl AppState {
                 container(
                     column![
                         // Nadpis sekcie
-                        text("5G File Paths:").size(16).font(bold_font),
+                        text("5G súbory:").size(16).font(bold_font),
                         
                         // Zoznam súborov (Scrollable area)
                         scrollable(
@@ -1234,11 +1234,11 @@ impl AppState {
 
                 // Riadok 2: Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť súbor ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Vyber súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -1247,11 +1247,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
                 
                 row![
-                    text("Protokol File Path:").width(150).size(16),
-                    text_input("Cesta pre uloženie...", &self.settings.protocol_points_path)
+                    text("Súbor protokol:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.settings.protocol_points_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtocolPointsPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtocolPointsPath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -1259,11 +1259,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Output Protokol Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.second_output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondOutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť protokol").on_press(Message::SaveFileClicked {
                         target: FileTarget::SecondOutputPath,
                         default_name: "protokol-z-merania.xlsx",
                         filter_name: "Excel súbory",
@@ -1283,7 +1283,7 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    text("Vygenerovat protokol:").size(16),
+                    text("Vygenerovať protokol:").size(16),
                     toggler(self.settings.use_protocol_points).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseProtocolPoints, value))
                 ].spacing(30).align_y(Alignment::Center),
 
@@ -1296,7 +1296,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny SSS RSRP:").size(16),
+                    text("Nastav minimálny SSS RSRP:").size(16),
                     text_input("-20.0", &self.threshold_rsrp)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdRsrp, text))
                         .padding(10)
@@ -1304,7 +1304,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny SSS SINR:").size(16),
+                    text("Nastav minimálny SSS SINR:").size(16),
                     text_input("-20.0", &self.threshold_sinr)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdSinr, text))
                         .padding(10)
@@ -1312,7 +1312,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                    {let btn = button(text("GENEROVAŤ").size(16).font(bold_font))
                         .padding([12, 40])
                         .style(button::primary);
                     if self.is_generating {
@@ -1333,11 +1333,11 @@ impl AppState {
             column![
                 text("Konfigurácia LTE Body Modulu").size(32).font(bold_font),
                 row![
-                    text("Filtre Operátorov Folder:").width(175).size(16),
+                    text("Priečinok filtrov operátorov:").width(175).size(16),
                     text_input("Cesta k priečinku...", &self.settings.filter_lte_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FilterLTEPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::FilterLTEPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
@@ -1346,7 +1346,7 @@ impl AppState {
                 container(
                     column![
                         // Nadpis sekcie
-                        text("LTE File Paths:").size(16).font(bold_font),
+                        text("LTE súbory:").size(16).font(bold_font),
                         
                         // Zoznam súborov (Scrollable area)
                         scrollable(
@@ -1397,11 +1397,11 @@ impl AppState {
 
                 // Riadok 2: Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť súbor ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -1410,11 +1410,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
                 
                 row![
-                    text("Protokol File Path:").width(150).size(16),
-                    text_input("Cesta pre uloženie...", &self.settings.protocol_points_path)
+                    text("Súbor protokol:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.settings.protocol_points_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtocolPointsPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtocolPointsPath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -1422,11 +1422,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Output Protokol Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.second_output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondOutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť protokol").on_press(Message::SaveFileClicked {
                         target: FileTarget::SecondOutputPath,
                         default_name: "protokol-z-merania.xlsx",
                         filter_name: "Excel súbory",
@@ -1448,7 +1448,7 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    text("Vygenerovat protokol:").size(16),
+                    text("Vygenerovať protokol:").size(16),
                     toggler(self.settings.use_protocol_points).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseProtocolPoints, value))
                 ].spacing(30).align_y(Alignment::Center),
 
@@ -1461,7 +1461,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny RSRP:").size(16),
+                    text("Nastav minimálny RSRP:").size(16),
                     text_input("-20.0", &self.threshold_rsrp)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdRsrp, text))
                         .padding(10)
@@ -1469,7 +1469,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny SINR:").size(16),
+                    text("Nastav minimálny SINR:").size(16),
                     text_input("-20.0", &self.threshold_sinr)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdSinr, text))
                         .padding(10)
@@ -1477,7 +1477,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                    {let btn = button(text("GENEROVAŤ").size(16).font(bold_font))
                         .padding([12, 40])
                         .style(button::primary);
                     if self.is_generating {
@@ -1503,7 +1503,7 @@ impl AppState {
                     text_input("Cesta k priečinku...", &self.settings.filter_lte_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FilterLTEPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::FilterLTEPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
@@ -1513,14 +1513,14 @@ impl AppState {
                     text_input("Cesta k priečinku...", &self.settings.filter_5g_path)
                         .on_input(|text| Message::PathChanged(FileTarget::Filter5GPath, text))
                         .padding(10),
-                    button("Select Folder").on_press(Message::SelectFolderClicked {
+                    button("Vyber priečinok").on_press(Message::SelectFolderClicked {
                                                 target: FileTarget::Filter5GPath
                                             }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
                 container(
                     column![
-                        text("Mobile File Paths:").size(16).font(bold_font),
+                        text("Mobile body:").size(16).font(bold_font),
 
                         scrollable(
                             container(
@@ -1598,11 +1598,11 @@ impl AppState {
                 .width(Length::Fill),
 
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť súbor ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                                                 target: FileTarget::OutputPath,
                                                 default_name: "zony.csv",
                                                 filter_name: "CSV súbory",
@@ -1611,11 +1611,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Protokol File Path:").width(150).size(16),
-                    text_input("Cesta pre uloženie...", &self.settings.protocol_mobile_path)
+                    text("Súbor protokol:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.settings.protocol_mobile_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtocolMobilePath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtocolMobilePath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -1623,11 +1623,11 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Output Protokol Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.second_output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondOutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť protokol").on_press(Message::SaveFileClicked {
                         target: FileTarget::SecondOutputPath,
                         default_name: "protokol-z-merania.xlsx",
                         filter_name: "Excel súbory",
@@ -1641,12 +1641,12 @@ impl AppState {
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    text("Pouzit filtrovanie:").size(16),
+                    text("Použit filtrovanie:").size(16),
                     toggler(self.settings.use_multiple_filters).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseMultipleFilters, value))
                 ].spacing(30).align_y(Alignment::Center),
 
                 row![
-                    text("Vygenerovat protokol:").size(16),
+                    text("Vygenerovať protokol:").size(16),
                     toggler(self.settings.use_protocol_points).on_toggle(|value| Message::ToggleChanged(ToggleTarget::UseProtocolPoints, value))
                 ].spacing(30).align_y(Alignment::Center),
 
@@ -1659,7 +1659,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny SSS RSRP:").size(16),
+                    text("Nastav minimálny SSS RSRP:").size(16),
                     text_input("-20.0", &self.threshold_rsrp)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdRsrp, text))
                         .padding(10)
@@ -1667,7 +1667,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    text("Nastav minimalny SSS SINR:").size(16),
+                    text("Nastav minimálny SSS SINR:").size(16),
                     text_input("-20.0", &self.threshold_sinr)
                         .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::ThresholdSinr, text))
                         .padding(10)
@@ -1675,7 +1675,7 @@ impl AppState {
                 ].spacing(20).align_y(Alignment::Center),
 
                 row![
-                    {let btn = button(text("GENERATE").size(16).font(bold_font))
+                    {let btn = button(text("GENEROVAŤ").size(16).font(bold_font))
                         .padding([12, 40])
                         .style(button::primary);
                     if self.is_generating {
@@ -1698,11 +1698,11 @@ impl AppState {
                 
                 // Cesta k protokolu
                 row![
-                    text("Protokol File Path:").width(150).size(16),
+                    text("Súbor protokol:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.settings.protokol_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtokolPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtokolPath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -1711,11 +1711,11 @@ impl AppState {
 
                 // GSM File Path
                 row![
-                    text("GSM File Path:").width(150).size(16),
+                    text("Súbor GSM zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::FirstPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1724,11 +1724,11 @@ impl AppState {
 
                 // LTE File Path
                 row![
-                    text("LTE File Path:").width(150).size(16),
+                    text("Súbor LTE zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.second_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::SecondPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1737,11 +1737,11 @@ impl AppState {
 
                 // 5G File Path
                 row![
-                    text("5G File Path:").width(150).size(16),
+                    text("Súbor 5G zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.third_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ThirdPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ThirdPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1750,11 +1750,11 @@ impl AppState {
 
                 // Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                         target: FileTarget::OutputPath,
                         default_name: "protokol-z-merania.xlsx",
                         filter_name: "Excel súbory",
@@ -1812,7 +1812,7 @@ impl AppState {
 
                 // Generate Button
                 row![
-                    button(text("GENERATE").size(16).font(bold_font))
+                    button(text("GENEROVAŤ").size(16).font(bold_font))
                         .on_press(Message::GenerateClicked)
                         .padding([12, 40])
                         .style(button::primary)
@@ -1830,11 +1830,11 @@ impl AppState {
                 
                 // Cesta k protokolu DB
                 row![
-                    text("Protokol DB File Path:").width(150).size(16),
+                    text("Súbor protokol:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.settings.protocol_db_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ProtocolDBPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ProtocolDBPath,
                         filter_name: "XLSX Súbory",
                         extensions: &["xlsx"],
@@ -1843,11 +1843,11 @@ impl AppState {
 
                 // GSM File Path
                 row![
-                    text("GSM File Path:").width(150).size(16),
+                    text("Súbor GSM zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::FirstPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1856,11 +1856,11 @@ impl AppState {
 
                 // LTE File Path
                 row![
-                    text("LTE File Path:").width(150).size(16),
+                    text("Súbor LTE zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.second_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::SecondPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1869,11 +1869,11 @@ impl AppState {
 
                 // 5G File Path
                 row![
-                    text("5G File Path:").width(150).size(16),
+                    text("Súbor 5G zóny:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.third_path)
                         .on_input(|text| Message::PathChanged(FileTarget::ThirdPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SelectFileClicked {
+                    button("Vyber súbor").on_press(Message::SelectFileClicked {
                         target: FileTarget::ThirdPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
@@ -1882,11 +1882,11 @@ impl AppState {
 
                 // Output Path
                 row![
-                    text("Output Path:").width(150).size(16),
+                    text("Uložiť protokol ako:").width(150).size(16),
                     text_input("Cesta pre uloženie...", &self.output_path)
                         .on_input(|text| Message::PathChanged(FileTarget::OutputPath, text))
                         .padding(10),
-                    button("Select File").on_press(Message::SaveFileClicked {
+                    button("Uložiť súbor").on_press(Message::SaveFileClicked {
                         target: FileTarget::OutputPath,
                         default_name: "protokol-db.xlsx",
                         filter_name: "Excel súbory",
@@ -1941,7 +1941,7 @@ impl AppState {
 
                 // Generate Button
                 row![
-                    button(text("GENERATE").size(16).font(bold_font))
+                    button(text("GENEROVAŤ").size(16).font(bold_font))
                         .on_press(Message::GenerateClicked)
                         .padding([12, 40])
                         .style(button::primary)
