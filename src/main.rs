@@ -571,7 +571,7 @@ impl AppState {
                             create_protocol(protocol_path, first_path, second_path,Some(third_path) ,output_path,measured_city, total_power, sinr, rsrp, antenna_height, internal_environment)
                         }
                         Screen::Protocol_DB => {
-                            create_protocol_db(protocol_db_path, first_path, second_path, output_path, measured_city, sinr, rsrp, antenna_height, internal_environment)
+                            create_protocol_db(protocol_db_path, first_path, second_path, third_path, output_path, measured_city, total_power, sinr, rsrp, antenna_height, internal_environment)
                         }
                         Screen::_5G_Zone => process_dataset::<FiveGRecord>(grid_path,first_path, output_path,generate_missing_operators, use_5g_filter,filter_5g_path),
                         Screen::_5G_Point => process_point_dataset::<FiveGRecord>(multiple_paths, output_path, filter_5g_path, protocol_point_path, second_output_path, use_5g_filter, max_distance, generate_missing_operators,threshold_sinr,threshold_rsrp),
@@ -1841,9 +1841,9 @@ impl AppState {
                     }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
-                // LTE File Path
+                // GSM File Path
                 row![
-                    text("LTE File Path:").width(150).size(16),
+                    text("GSM File Path:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.first_path)
                         .on_input(|text| Message::PathChanged(FileTarget::FirstPath, text))
                         .padding(10),
@@ -1854,14 +1854,27 @@ impl AppState {
                     }).padding(10),
                 ].spacing(20).align_y(Alignment::Center),
 
-                // 5G File Path
+                // LTE File Path
                 row![
-                    text("5G File Path:").width(150).size(16),
+                    text("LTE File Path:").width(150).size(16),
                     text_input("Cesta k súboru...", &self.second_path)
                         .on_input(|text| Message::PathChanged(FileTarget::SecondPath, text))
                         .padding(10),
                     button("Select File").on_press(Message::SelectFileClicked {
                         target: FileTarget::SecondPath,
+                        filter_name: "CSV Súbory",
+                        extensions: &["csv"],
+                    }).padding(10),
+                ].spacing(20).align_y(Alignment::Center),
+
+                // 5G File Path
+                row![
+                    text("5G File Path:").width(150).size(16),
+                    text_input("Cesta k súboru...", &self.third_path)
+                        .on_input(|text| Message::PathChanged(FileTarget::ThirdPath, text))
+                        .padding(10),
+                    button("Select File").on_press(Message::SelectFileClicked {
+                        target: FileTarget::ThirdPath,
                         filter_name: "CSV Súbory",
                         extensions: &["csv"],
                     }).padding(10),
@@ -1889,6 +1902,13 @@ impl AppState {
                         .width(175),
                 ].spacing(20).align_y(Alignment::Center),
 
+                row![
+                    text("Hodnota Total Power:").size(16),
+                    text_input("-20.0", &self.total_power)
+                        .on_input(|text| Message::ProtocolInputChanged(ProtocolInputType::TotalPower, text))
+                        .padding(10)
+                        .width(100),
+                ].spacing(20).align_y(Alignment::Center),
                 row![
                     text("Hodnota SINR:").size(16),
                     text_input("-20.0", &self.sinr)
